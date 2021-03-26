@@ -1,0 +1,13 @@
+name: toxiproxy-crystal
+version: 0.0.1
+
+authors:
+  - jlholm <jlholmz@gmail.com>
+
+targets:
+  toxiproxy-crystal:
+    main: src/toxiproxy.cr
+
+crystal: 1.0.0
+
+license: MIT
