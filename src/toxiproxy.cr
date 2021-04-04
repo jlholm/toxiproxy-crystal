@@ -3,6 +3,7 @@ require "http/client"
 require "socket"
 require "json"
 require "./toxiproxy/proxy_collection"
+require "./toxiproxy/toxic_collection"
 
 class Toxiproxy
   DEFAULT_URI = "http://127.0.0.1:8474"
@@ -15,18 +16,18 @@ class Toxiproxy
   @@uri : URI?
   @@http : HTTP::Client?
 
-  @upstream : String
-  @listen : String
-  @name : String
-  @enabled : Bool
+  @upstream : String?
+  @listen : String?
+  @name : String?
+  @enabled : Bool?
 
   getter :listen, :name, :enabled
 
   def initialize(options)
-    @upstream = options[:upstream]
-    @listen = options[:listen] || "localhost:0"
-    @name = options[:name]
-    @enabled = options[:enabled]
+    @upstream = options[:upstream]?
+    @listen = options[:listen]? || "localhost:0"
+    @name = options[:name]?
+    @enabled = options[:enabled]?
   end
 
   def self.reset
@@ -118,11 +119,103 @@ class Toxiproxy
     false
   end
 
+  def upstream(type, name = nil, toxicity = nil, attrs = {String => Int32})
+    return @upstream unless type
+
+    collection = ToxicCollection.new([self])
+    collection.upstream(type, attrs)
+    collection
+  end
+
+  def downstream(type, name = nil, toxicity = nil, attrs = {String => Int32})
+    collection = ToxicCollection.new([self])
+    collection.downstream(type, name, toxicity, attrs)
+    collection
+  end
+
+  # Simulates the endpoint is down, by closing the connection and no
+  # longer accepting connections. This is useful to simulate critical system
+  # failure, such as a data store becoming completely unavailable.
+  def down(&block)
+    disable
+    yield
+  ensure
+    enable
+  end
+
+  # Disables a Toxiproxy. This will drop all active connections and stop the
+  # proxy from listening.
+  def disable
+    response = http.post(
+      "/proxies/#{name}",
+      headers: HTTP::Headers{"Content-Type" => "application/json"},
+      body: {enabled: false}.to_json
+    )
+    assert_response(response)
+    self
+  end
+
+  # Enables a Toxiproxy. This will cause the proxy to start listening again.
+  def enable
+    response = http.post(
+      "/proxies/#{name}",
+      headers: HTTP::Headers{"Content-Type" => "application/json"},
+      body: {enabled: true}.to_json
+    )
+    assert_response(response)
+    self
+  end
+
+  # Create a Toxiproxy, proxying traffic from `@listen` (optional argument to
+  # the constructor) to `@upstream`. `#down` `#upstream` or `#downstream` can
+  # at any time alter the health of this connection.
+  def create
+    response = http.post(
+      "/proxies",
+      headers: HTTP::Headers{"Content-Type" => "application/json"},
+      body: {
+        upstream: upstream.to_s,
+        name: name.to_s,
+        listen: listen.to_s,
+        enabled: enabled,
+      }.to_json
+    )
+    assert_response(response)
+
+    new = JSON.parse(response.body)
+    @listen = new["listen"].to_s
+
+    self
+  end
+
+  # Destroys a Toxiproxy.
+  def destroy
+    response = http.delete("/proxies/#{name}")
+    assert_response(response)
+    serlf
+  end
+
+  def toxics
+    response = http.get("/proxies/#{name}/toxics")
+    assert_response(response)
+
+    JSON.parse(response.body).as_a.map { |attrs|
+      Toxic.new(
+        type: attrs["type"],
+        name: attrs["name"],
+        proxy: self,
+        stream: attrs["stream"],
+        toxicity: attrs["toxicity"],
+        attributes: attrs["attributes"],
+      )
+    }
+  end
+
   private def self.uri
     @@uri ||= URI.parse(DEFAULT_URI)
   end
 
-  private def self.http
+  protected def self.http
     @@http ||= HTTP::Client.new(uri)
   end
 
@@ -130,7 +223,7 @@ class Toxiproxy
     self.class.http
   end
 
-  private def self.assert_response(response)
+  protected def self.assert_response(response)
     case response
     when HTTP::Status::CONFLICT
       raise ProxyExists.new(response.body)
