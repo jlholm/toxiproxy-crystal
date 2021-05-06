@@ -1,18 +1,14 @@
 # toxiproxy-crystal
 
-TODO: Write a description here
+Crystal shard for [Toxiproxy](https://github.com/shopify/toxiproxy). This shard makes it easy to write tests that ensure your application behaves appropriately under harsh conditions. Before you can use the Crystal shard, you need to read the [Usage section of the Toxiproxy README](https://github.com/shopify/toxiproxy#usage).
 
 ## Installation
 
-TODO: Write installation instructions here
+This project is a work in progress. Installation instructions will be updated when this shard is stable.
 
 ## Usage
 
-TODO: Write usage instructions here
-
-## Development
-
-TODO: Write development instructions here
+> N/A
 
 ## Contributing
 
